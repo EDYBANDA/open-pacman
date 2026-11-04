@@ -12,6 +12,7 @@ const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
 
 const PACMAN_SPEED = 0.125; // 1/8 celda/frame -> alinea cada 8 frames
 const GHOST_SPEED = 0.1;    // 1/10 celda/frame
+const RELEASE_INTERVAL = 90; // 1.5 s entre salidas de la pocilga (a ~60 fps)
 
 // Crea una partida nueva. Copia MAZE (pristino) a game.grid para poder comer
 // dots sin destruir el original, y reiniciar.
@@ -36,12 +37,14 @@ function createGame() {
       nextDir: null,
       speed: PACMAN_SPEED,
     },
-    ghosts: GHOST_STARTS.map( ( g ) => ( {
+    ghosts: GHOST_STARTS.map( ( g, i ) => ( {
       x: g.x,
       y: g.y,
       dir: 'up',
       speed: GHOST_SPEED,
       kind: g.kind,
+      phase: g.kind === 'blinky' ? 'active' : 'pen',
+      releaseAt: RELEASE_INTERVAL * i, // blinky=0, pinky=90, inky=180, clyde=270
     } ) ),
   };
 }
@@ -120,7 +123,8 @@ function decideGhost( game, g ) {
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
-  if ( g.kind === 'hunter' ) {
+  // Provisional (paso 1 del spec 01): blinky caza directo; el resto, aleatorio.
+  if ( g.kind === 'blinky' ) {
     const px = Math.round( p.x );
     const py = Math.round( p.y );
     let best = choices[ 0 ];

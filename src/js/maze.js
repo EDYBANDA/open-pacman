@@ -52,11 +52,22 @@ const MAZE = MAZE_STR.map( ( row ) => row.split( '' ).map( parseTile ) );
 const TUNNEL_ROW = 14;
 const PACMAN_START = { x: 13, y: 23 };
 const GHOST_STARTS = [
-  { x: 13, y: 14, kind: 'hunter' }, // dentro de la pen
-  { x: 14, y: 14, kind: 'random' }, // dentro de la pen
+  { x: 13, y: 11, kind: 'blinky' }, // fuera de la pocilga, sobre la puerta
+  { x: 14, y: 14, kind: 'pinky'  }, // dentro de la pocilga
+  { x: 12, y: 14, kind: 'inky'   }, // dentro de la pocilga
+  { x: 15, y: 14, kind: 'clyde'  }, // dentro de la pocilga
 ];
+
+// Dianas de scatter por kind (no celdas transitables; pueden caer fuera del grid).
+const SCATTER_CORNERS = {
+  blinky: { x: 25, y: 0 },
+  pinky:  { x: 2,  y: 0 },
+  inky:   { x: 27, y: 30 },
+  clyde:  { x: 0,  y: 30 },
+};
 
 window.MAZE = MAZE;
 window.TUNNEL_ROW = TUNNEL_ROW;
 window.PACMAN_START = PACMAN_START;
 window.GHOST_STARTS = GHOST_STARTS;
+window.SCATTER_CORNERS = SCATTER_CORNERS;
