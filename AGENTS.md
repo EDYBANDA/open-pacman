@@ -5,12 +5,12 @@ Juego tipo Pac-Man en Vanilla JS/HTML/CSS. Sin build, sin `package.json`, sin np
 ## Arquitectura (globals, no módulos)
 
 - Son 4 `<script>` en `src/index.html` y el ORDEN importa: `maze.js` → `game.js` → `render.js` → `main.js`.
-- Se comunican por globals de `window`: maze expone `MAZE`, `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS`; game expone `createGame`, `update`, `DIRS`; render expone `draw`. Un archivo JS nuevo requiere su etiqueta `<script>` en el HTML, en la posición correcta. No convertir a ES modules sin pedirlo.
+- Se comunican por globals de `window`: maze expone `MAZE`, `TUNNEL_ROW`, `PACMAN_START`, `GHOST_STARTS`, `SCATTER_CORNERS`; game expone `createGame`, `update`, `DIRS`; render expone `draw`. Un archivo JS nuevo requiere su etiqueta `<script>` en el HTML, en la posición correcta. No convertir a ES modules sin pedirlo.
 
 ## Contratos que se rompen fácil
 
 - `MAZE` es pristina e inmutable: cada partida la copia a `game.grid` y los dots se comen ahí. Renderizar siempre desde `game.grid`, nunca desde `MAZE` (ver comentario en render.js).
-- Códigos de celda: `#`=1 pared · `.`=2 dot · ` `=0 vacío · `-`=3 puerta. La puerta (3) bloquea a Pac-Man pero NO a los fantasmas (`isWall` en game.js).
+- Códigos de celda: `#`=1 pared · `.`=2 dot · ` `=0 vacío · `-`=3 puerta. La puerta (3) bloquea a Pac-Man (`isWall` en game.js); para los fantasmas es de solo salida: pueden salir de la pocilga subiendo por ella, pero nunca reentrar bajando (`canMove` en game.js).
 - Las posiciones son floats sub-celda (velocidades 1/8 y 1/10 celda/frame); los giros y decisiones solo aplican al estar alineado (`aligned`, tolerancia 1e-3). Tunel: fila 14 (`TUNNEL_ROW`) con wrap horizontal.
 - El canvas es 560×620, hardcoded en index.html = 28×31 tiles × `TILE = 20` (render.js). Cambiar el laberinto o `TILE` exige actualizar a mano los atributos `width`/`height` del canvas.
 
