@@ -52,7 +52,7 @@ const MAZE = MAZE_STR.map( ( row ) => row.split( '' ).map( parseTile ) );
 const TUNNEL_ROW = 14;
 const PACMAN_START = { x: 13, y: 23 };
 const GHOST_STARTS = [
-  { x: 13, y: 11, kind: 'blinky' }, // fuera de la pocilga, sobre la puerta
+  { x: 13, y: 14, kind: 'blinky' }, // dentro de la pocilga, bajo la puerta
   { x: 14, y: 14, kind: 'pinky'  }, // dentro de la pocilga
   { x: 12, y: 14, kind: 'inky'   }, // dentro de la pocilga
   { x: 15, y: 14, kind: 'clyde'  }, // dentro de la pocilga
