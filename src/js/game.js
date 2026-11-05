@@ -16,6 +16,12 @@ const RELEASE_INTERVAL = 90; // 1.5 s entre salidas de la pocilga (a ~60 fps)
 const CLYDE_RADIUS = 8; // celdas; a esta distancia o menos, Clyde se retira
 const SCATTER_FRAMES = 420; // 7 s de scatter
 const CHASE_FRAMES = 1200; // 20 s de chase
+const FRIGHT_FRAMES = 360; // 6 s de modo asustado
+const FRIGHT_SPEED = 0.05; // 0.5x GHOST_SPEED: huida del asustado
+const FRIGHT_BLINK_FRAMES = 120; // 2 s de parpadeo azul/blanco al final del fright
+const EYES_SPEED = 0.2; // 2x GHOST_SPEED: regreso de los ojos a la pocilga
+const GHOST_SCORES = [ 200, 400, 800, 1600 ]; // cadena de comidos por racha
+const EYES_TARGET = { x: 13, y: 14 }; // diana de los ojos: centro de la pocilga
 
 // Estado inicial de un fantasma a partir de su entrada i-esima de GHOST_STARTS.
 // Los 4 nacen en la pocilga (fase pen) y salen escalonados por la puerta.
@@ -27,6 +33,7 @@ function initialGhost( start, i ) {
     speed: GHOST_SPEED,
     kind: start.kind,
     phase: 'pen', // los 4, incluido blinky
+    frightened: false, // azul y comestible durante el modo asustado
     releaseAt: RELEASE_INTERVAL * i, // blinky=0, pinky=90, inky=180, clyde=270
   };
 }
@@ -38,8 +45,9 @@ function createGame() {
   // La celda de inicio de Pacman arranca sin dot.
   grid[ PACMAN_START.y ][ PACMAN_START.x ] = 0;
 
+  // La victoria exige comer todos los items: dots (2) y power pellets (4).
   let dots = 0;
-  for ( const row of grid ) for ( const v of row ) if ( v === 2 ) dots++;
+  for ( const row of grid ) for ( const v of row ) if ( v === 2 || v === 4 ) dots++;
 
   return {
     state: 'start',
@@ -49,6 +57,8 @@ function createGame() {
     lifeFrame: 0, // frames transcurridos de la vida actual (gobierna las salidas)
     mode: 'scatter', // fase global actual (scatter | chase)
     modeTimer: SCATTER_FRAMES, // frames restantes del modo actual
+    frightTimer: 0, // frames restantes del modo asustado (0 = inactivo)
+    frightChain: 0, // fantasmas comidos en la racha actual
     grid,
     pacman: {
       x: PACMAN_START.x,
@@ -86,7 +96,8 @@ function canMove( grid, x, y, dir, actor ) {
   // Tunel: salir por un borde en la fila del tunel siempre es valido.
   if ( ty === TUNNEL_ROW && ( tx < 0 || tx >= grid[ 0 ].length ) ) return true;
   if ( isWall( grid, tx, ty, actor ) ) return false;
-  // Puerta "solo salida": un fantasma nunca baja a la puerta; nadie reentra a la pocilga.
+  // Puerta "solo salida": un fantasma nunca baja a la puerta; nadie reentra a
+  // la pocilga. Unica excepcion: los ojos (actor 'eyes') bajan a regenerarse.
   if ( actor === 'ghost' && dir === 'down' && grid[ ty ][ tx ] === 3 ) return false;
   return true;
 }
@@ -96,6 +107,18 @@ function wrapTunnel( a, width ) {
     if ( a.x < 0 ) a.x += width;
     else if ( a.x >= width ) a.x -= width;
   }
+}
+
+// Dispara el modo asustado al comer un power pellet: 6 s de huida, cadena de
+// comidos a 0, todos los no-ojos se asustan y los activos invierten direccion.
+function triggerFright( game ) {
+  game.frightTimer = FRIGHT_FRAMES;
+  game.frightChain = 0;
+  game.ghosts.forEach( ( g ) => {
+    if ( g.phase === 'eyes' ) return; // los ojos siguen su regreso, no se asustan
+    g.frightened = true;
+    if ( g.phase === 'active' ) g.dir = OPPOSITE[ g.dir ];
+  } );
 }
 
 function movePacman( game ) {
@@ -112,11 +135,17 @@ function movePacman( game ) {
       p.dir = p.nextDir;
       p.nextDir = null;
     }
-    // Comer dot.
-    if ( grid[ p.y ][ p.x ] === 2 ) {
+    // Comer dot (10 pts) o power pellet (50 pts).
+    const v = grid[ p.y ][ p.x ];
+    if ( v === 2 ) {
       grid[ p.y ][ p.x ] = 0;
       game.score += 10;
       game.dotsRemaining--;
+    } else if ( v === 4 ) {
+      grid[ p.y ][ p.x ] = 0;
+      game.score += 50;
+      game.dotsRemaining--;
+      triggerFright( game );
     }
     // Si no puede seguir, se detiene en la celda.
     if ( !canMove( grid, p.x, p.y, p.dir, 'pacman' ) ) return;
@@ -134,6 +163,8 @@ const ARCADE_ORDER = [ 'up', 'left', 'down', 'right' ];
 // Diana de un fantasma segun su personalidad (spec 01).
 // Puede caer fuera del grid: solo se usa para comparar distancias.
 function targetFor( game, g ) {
+  // Los ojos vuelven siempre al centro de la pocilga, sin importar el modo.
+  if ( g.phase === 'eyes' ) return EYES_TARGET;
   // En scatter, cada fantasma se retira a su esquina.
   if ( game.mode === 'scatter' ) return SCATTER_CORNERS[ g.kind ];
 
@@ -165,16 +196,24 @@ function targetFor( game, g ) {
 
 function decideGhost( game, g ) {
   const grid = game.grid;
-  const target = targetFor( game, g );
+  // Los ojos son el unico actor que puede bajar por la puerta de la pocilga.
+  const actor = g.phase === 'eyes' ? 'eyes' : 'ghost';
 
   const options = Object.keys( DIRS ).filter(
-    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, 'ghost' )
+    ( dir ) => dir !== OPPOSITE[ g.dir ] && canMove( grid, g.x, g.y, dir, actor )
   );
   // Sin salida (callejon): permitir el giro de 180.
   const choices = options.length ? options : [ '' + OPPOSITE[ g.dir ] ];
 
+  // Asustado: huida con direccion aleatoria entre las opciones validas.
+  if ( g.frightened ) {
+    g.dir = choices[ Math.floor( Math.random() * choices.length ) ];
+    return;
+  }
+
   // Greedy: minimizar la distancia Manhattan a la diana,
   // con desempate arcade up > left > down > right.
+  const target = targetFor( game, g );
   let best = choices[ 0 ];
   let bestDist = Infinity;
   for ( const dir of ARCADE_ORDER ) {
@@ -224,6 +263,36 @@ function moveLeavingGhost( g ) {
   g.y += d.y * g.speed;
 }
 
+// Fase 'eyes': el fantasma comido vuelve como solo ojos a 2x hacia la pocilga
+// por el greedy con diana fija. Unico autorizado a bajar por la puerta; al
+// llegar alineado al centro regenera y saldra en el proximo alineado.
+function moveEyesGhost( game, g ) {
+  const grid = game.grid;
+  const width = grid[ 0 ].length;
+
+  if ( aligned( g.x ) && aligned( g.y ) ) {
+    g.x = Math.round( g.x );
+    g.y = Math.round( g.y );
+    if ( g.x === EYES_TARGET.x && g.y === EYES_TARGET.y ) {
+      // Regenerado: pen con salida inmediata, ya no asustado.
+      g.phase = 'pen';
+      g.dir = 'up';
+      g.speed = GHOST_SPEED;
+      g.releaseAt = game.lifeFrame;
+      return;
+    }
+    decideGhost( game, g );
+    // Como el fright, la velocidad cambia solo alineado (evita desalinear).
+    g.speed = EYES_SPEED;
+    if ( !canMove( grid, g.x, g.y, g.dir, 'eyes' ) ) return;
+  }
+
+  const d = DIRS[ g.dir ];
+  g.x += d.x * g.speed;
+  g.y += d.y * g.speed;
+  wrapTunnel( g, width );
+}
+
 function moveGhost( game, g ) {
   if ( g.phase === 'pen' ) {
     movePenGhost( game, g );
@@ -231,6 +300,10 @@ function moveGhost( game, g ) {
   }
   if ( g.phase === 'leaving' ) {
     moveLeavingGhost( g );
+    return;
+  }
+  if ( g.phase === 'eyes' ) {
+    moveEyesGhost( game, g );
     return;
   }
 
@@ -241,6 +314,9 @@ function moveGhost( game, g ) {
     g.x = Math.round( g.x );
     g.y = Math.round( g.y );
     decideGhost( game, g );
+    // La velocidad efectiva solo cambia alineado (a mitad de celda dejaria
+    // offsets que nunca vuelven a alinear). Asustado activo: huida a 0.5x.
+    g.speed = g.frightened ? FRIGHT_SPEED : GHOST_SPEED;
     if ( !canMove( grid, g.x, g.y, g.dir, 'ghost' ) ) return;
   }
 
@@ -259,6 +335,8 @@ function resetPositions( game ) {
   game.lifeFrame = 0;
   game.mode = 'scatter';
   game.modeTimer = SCATTER_FRAMES;
+  game.frightTimer = 0;
+  game.frightChain = 0;
   game.ghosts.forEach( ( g, i ) => Object.assign( g, initialGhost( GHOST_STARTS[ i ], i ) ) );
 }
 
@@ -269,22 +347,38 @@ function collides( a, b ) {
 function update( game ) {
   game.lifeFrame++;
 
-  // Alternancia global scatter/chase (7 s / 20 s, ciclo indefinido).
-  // Al cambiar de modo, los fantasmas activos invierten su direccion.
-  game.modeTimer--;
-  if ( game.modeTimer <= 0 ) {
-    game.mode = game.mode === 'chase' ? 'scatter' : 'chase';
-    game.modeTimer = game.mode === 'scatter' ? SCATTER_FRAMES : CHASE_FRAMES;
-    game.ghosts.forEach( ( g ) => {
-      if ( g.phase === 'active' ) g.dir = OPPOSITE[ g.dir ];
-    } );
+  // Modo asustado: mientras dura, el ciclo scatter/chase queda en pausa.
+  if ( game.frightTimer > 0 ) {
+    game.frightTimer--;
+    if ( game.frightTimer === 0 ) {
+      game.ghosts.forEach( ( g ) => { g.frightened = false; } );
+    }
+  } else {
+    // Alternancia global scatter/chase (7 s / 20 s, ciclo indefinido).
+    // Al cambiar de modo, los fantasmas activos invierten su direccion.
+    game.modeTimer--;
+    if ( game.modeTimer <= 0 ) {
+      game.mode = game.mode === 'chase' ? 'scatter' : 'chase';
+      game.modeTimer = game.mode === 'scatter' ? SCATTER_FRAMES : CHASE_FRAMES;
+      game.ghosts.forEach( ( g ) => {
+        if ( g.phase === 'active' ) g.dir = OPPOSITE[ g.dir ];
+      } );
+    }
   }
 
   movePacman( game );
   game.ghosts.forEach( ( g ) => moveGhost( game, g ) );
 
   for ( const g of game.ghosts ) {
+    if ( g.phase === 'eyes' ) continue; // ojos: no colisionan
     if ( collides( game.pacman, g ) ) {
+      if ( g.frightened ) {
+        // Fantasma comestible: cadena 200/400/800/1600; vuelve como ojos.
+        game.score += GHOST_SCORES[ game.frightChain++ ];
+        g.frightened = false;
+        g.phase = 'eyes';
+        continue;
+      }
       game.lives--;
       if ( game.lives <= 0 ) {
         game.state = 'lost';
