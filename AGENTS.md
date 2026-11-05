@@ -10,7 +10,7 @@ Juego tipo Pac-Man en Vanilla JS/HTML/CSS. Sin build, sin `package.json`, sin np
 ## Contratos que se rompen fácil
 
 - `MAZE` es pristina e inmutable: cada partida la copia a `game.grid` y los dots se comen ahí. Renderizar siempre desde `game.grid`, nunca desde `MAZE` (ver comentario en render.js).
-- Códigos de celda: `#`=1 pared · `.`=2 dot · ` `=0 vacío · `-`=3 puerta. La puerta (3) bloquea a Pac-Man (`isWall` en game.js); para los fantasmas es de solo salida: pueden salir de la pocilga subiendo por ella, pero nunca reentrar bajando (`canMove` en game.js).
+- Códigos de celda: `#`=1 pared · `.`=2 dot · `o`=4 power pellet · ` `=0 vacío · `-`=3 puerta. La puerta (3) bloquea a Pac-Man (`isWall` en game.js); para los fantasmas es de solo salida: pueden salir de la pocilga subiendo por ella, pero nunca reentrar bajando — única excepción: los ojos (fantasma comido, fase `eyes`), que sí bajan por ella para regenerarse (`canMove` en game.js).
 - Las posiciones son floats sub-celda (velocidades 1/8 y 1/10 celda/frame); los giros y decisiones solo aplican al estar alineado (`aligned`, tolerancia 1e-3). Tunel: fila 14 (`TUNNEL_ROW`) con wrap horizontal.
 - El canvas es 560×620, hardcoded en index.html = 28×31 tiles × `TILE = 20` (render.js). Cambiar el laberinto o `TILE` exige actualizar a mano los atributos `width`/`height` del canvas.
 
