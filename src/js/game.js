@@ -18,7 +18,7 @@ const SCATTER_FRAMES = 420; // 7 s de scatter
 const CHASE_FRAMES = 1200; // 20 s de chase
 
 // Estado inicial de un fantasma a partir de su entrada i-esima de GHOST_STARTS.
-// Blinky nace activo y fuera; el resto espera en la pocilga su turno de salida.
+// Los 4 nacen en la pocilga (fase pen) y salen escalonados por la puerta.
 function initialGhost( start, i ) {
   return {
     x: start.x,
@@ -26,7 +26,7 @@ function initialGhost( start, i ) {
     dir: 'up',
     speed: GHOST_SPEED,
     kind: start.kind,
-    phase: start.kind === 'blinky' ? 'active' : 'pen',
+    phase: 'pen', // los 4, incluido blinky
     releaseAt: RELEASE_INTERVAL * i, // blinky=0, pinky=90, inky=180, clyde=270
   };
 }
